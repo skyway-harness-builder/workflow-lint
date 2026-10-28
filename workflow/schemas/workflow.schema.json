@@ -132,8 +132,12 @@
       }
     },
     "modelEnum": {
+      "description": "A Claude Code model alias (resolves to the latest model in that family) or a full model ID such as claude-sonnet-5-5.",
       "type": "string",
-      "enum": ["", "sonnet", "opus", "haiku"]
+      "anyOf": [
+        { "enum": ["", "sonnet", "opus", "haiku", "fable"] },
+        { "pattern": "^claude-[a-z0-9]+(-[a-z0-9]+)*$" }
+      ]
     },
     "isolationEnum": {
       "type": "string",

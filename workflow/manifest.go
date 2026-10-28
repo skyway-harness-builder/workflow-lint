@@ -133,7 +133,7 @@ func nodeCommonKeys() map[string]string {
 		"id":             "string: node identifier; unique within the workflow",
 		"depends_on":     "[]string: node IDs this node waits for before executing",
 		"when":           "string: condition expression; node is skipped if false",
-		"model":          "string: Claude model override (sonnet, opus, haiku)",
+		"model":          "string: Claude model alias (sonnet, opus, haiku, fable) or full ID (claude-sonnet-5-5)",
 		"effort":         "string: Claude effort level",
 		"isolation":      "string: worktree | worktree-run",
 		"keep_branch":    "bool: retain the worktree branch after cleanup",
