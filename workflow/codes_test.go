@@ -19,7 +19,7 @@ func TestLocalCodesDoNotCollideWithSkyerr(t *testing.T) {
 		string(CodeInvokeParamMissing), string(CodeInvokeParamType),
 		string(CodeRunnerInvalid),
 		codeCurlMissingFail, codeCurlMissingMaxTime, codeRetryOnSink, codePreferHTTPNode,
-		codeThinkingRejected,
+		codeThinkingRejected, codeHooksNeedLoose,
 	}
 	seen := map[string]bool{}
 	for _, code := range local {
