@@ -145,7 +145,7 @@ func nodeCommonKeys() map[string]string {
 		"fallback_model": "string: model used when primary is overloaded",
 		"mcp_config":     "string: path to per-node mcp.json override",
 		"allowed_tools":  "[]string: tool allowlist merged with RunOpts base",
-		"denied_tools":   "[]string: tools blocked via pre_tool_use hook",
+		"denied_tools":   "[]string: tools removed via --disallowed-tools (\"*\" removes all)",
 		"permissions":    "string: interactive enables --permission-prompt-tool",
 		"context":        "string: fresh | shared",
 		"thinking":       "object: extended thinking config (mode, budget_tokens)",
