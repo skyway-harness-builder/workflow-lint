@@ -285,6 +285,8 @@ type RejectOptions struct {
 
 // ThinkingConfig configures extended thinking for a prompt node.
 // Stored in the schema for future CLI flag support; not yet wired.
+// Only "adaptive" works on every current Claude model (thinking depth is set
+// with effort); "enabled" and "disabled" draw a SKY-WF-115 lint warning.
 type ThinkingConfig struct {
 	Mode         string `json:"mode"`                    // "adaptive" | "enabled" | "disabled"
 	BudgetTokens int    `json:"budget_tokens,omitempty"` // required when mode="enabled"

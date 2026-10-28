@@ -44,6 +44,14 @@ Semantic rules for outbound HTTP in bash nodes (inline `bash` or resolved
 - `SKY-WF-114` — bash body is essentially a single `curl` call; suggests using
   an `http` node instead (info).
 
+### Thinking config
+
+- `SKY-WF-115` — `thinking.mode = "enabled"` (fixed `budget_tokens`) or
+  `"disabled"` on a node. Current Claude models reject these with HTTP 400:
+  `enabled` on Fable 5.x, Opus 4.7+, Sonnet 5.x and Haiku 5.5; `disabled` on
+  Fable 5.x, Opus 5.5 and Sonnet 5.5. Use `mode = "adaptive"` and set `effort`
+  (warning; the field is not forwarded to the CLI yet).
+
 ### Declared workflow params
 
 Workflows may declare typed run inputs in `⊕meta⊕` using `params.<name>.*` keys:
