@@ -43,7 +43,9 @@ func TestValidateSchema_InvalidModel(t *testing.T) {
 	if len(issues) == 0 {
 		t.Fatal("expected at least one schema issue for invalid model, got none")
 	}
-	var found bool
+	// The model accepts an alias enum or a full-ID pattern, so an invalid value
+	// yields one issue per branch; at least one must name the allowed values.
+	var found, mentioned bool
 	for _, si := range issues {
 		if si.NodeID != "second" {
 			continue
@@ -56,14 +58,16 @@ func TestValidateSchema_InvalidModel(t *testing.T) {
 		if !strings.HasPrefix(msg, "node second:") {
 			t.Errorf("formatted issue %q should start with 'node second:'", msg)
 		}
-		if !strings.Contains(strings.ToLower(si.Message), "sonnet") &&
-			!strings.Contains(strings.ToLower(si.Message), "enum") &&
-			!strings.Contains(strings.ToLower(si.Message), "gpt-4") {
-			t.Errorf("message %q should mention the enum constraint or invalid value", si.Message)
+		lower := strings.ToLower(si.Message)
+		if strings.Contains(lower, "sonnet") || strings.Contains(lower, "enum") || strings.Contains(lower, "gpt-4") {
+			mentioned = true
 		}
 	}
 	if !found {
 		t.Fatalf("expected issue attributed to node 'second', got %+v", issues)
+	}
+	if !mentioned {
+		t.Errorf("no issue for node 'second' mentions the allowed models or the invalid value: %+v", issues)
 	}
 }
 
