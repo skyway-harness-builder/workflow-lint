@@ -49,8 +49,16 @@ Semantic rules for outbound HTTP in bash nodes (inline `bash` or resolved
 - `SKY-WF-115` — `thinking.mode = "enabled"` (fixed `budget_tokens`) or
   `"disabled"` on a node. Current Claude models reject these with HTTP 400:
   `enabled` on Fable 5.x, Opus 4.7+, Sonnet 5.x and Haiku 5.5; `disabled` on
-  Fable 5.x, Opus 5.5 and Sonnet 5.5. Use `mode = "adaptive"` and set `effort`
-  (warning; the field is not forwarded to the CLI yet).
+  Fable 5.x, Opus 5.5 and Sonnet 5.5. Use `thinking = {"mode": "adaptive"}`
+  and set `effort` (warning; the field is not forwarded to the CLI yet).
+
+### Code allocation
+
+`SKY-WF-*` codes here are allocated in sequence; the next free one is
+`SKY-WF-116`. `SKY-WF-200`–`SKY-WF-299` are reserved for checks `skyway lint`
+runs itself (its concurrency checks are `SKY-WF-201`–`203`), so do not
+allocate in that block. Earlier, both sides used `SKY-WF-111`–`113` for
+different checks.
 
 ### Declared workflow params
 
