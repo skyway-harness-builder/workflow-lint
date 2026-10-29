@@ -393,3 +393,92 @@ ui = "docs/card.md"
 		t.Errorf("Node.UI = %q, want \"docs/card.md\"", wf.Nodes[0].UI)
 	}
 }
+
+// ── SKY-WF-118: ui frontmatter must be valid YAML ─────────────────────────────
+
+func writeUIFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func codeDiags(diags []Diagnostic, code string) []Diagnostic {
+	var out []Diagnostic
+	for _, d := range diags {
+		if d.Code == code {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// The failure seen in the wild: an unquoted ": " inside a plain scalar.
+const brokenFrontmatter = "---\nshort_description: Runs checks.\nlong_description: Checks the data: suspense empty\n---\n\nBody.\n"
+
+func TestValidateUI_InvalidFrontmatter_SKY_WF_118(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	wfPath := filepath.Join(dir, "workflow.sky")
+	writeUIFile(t, dir, "ui/check.en.md", brokenFrontmatter)
+	writeUIFile(t, dir, "ui/check.nl.md", "---\nshort_description: Controleert.\n---\n\nBody.\n")
+	writeUIFile(t, dir, "ui/workflow.en.md", brokenFrontmatter)
+
+	wf := &Workflow{UI: "ui/workflow", Nodes: []Node{{ID: "check", UI: "ui/check"}}}
+	got := codeDiags(ValidateUI(wf, wfPath), "SKY-WF-118")
+	if len(got) != 2 {
+		t.Fatalf("want 2 SKY-WF-118 (workflow en + node en), got %d: %+v", len(got), got)
+	}
+	for _, d := range got {
+		if d.Severity != "" {
+			t.Errorf("SKY-WF-118 severity = %q, want \"\" (blocking)", d.Severity)
+		}
+		if strings.Contains(d.Message, "check.nl.md") {
+			t.Errorf("valid nl file reported: %q", d.Message)
+		}
+	}
+	if !strings.Contains(got[0].Message, "workflow ui") || !strings.Contains(got[0].Message, filepath.Join("ui", "workflow.en.md")) {
+		t.Errorf("workflow-level message = %q, want it to name the workflow ui and ui/workflow.en.md", got[0].Message)
+	}
+	if !strings.Contains(got[1].Message, `node "check"`) || !strings.Contains(got[1].Message, filepath.Join("ui", "check.en.md")) {
+		t.Errorf("node-level message = %q, want it to name node \"check\" and ui/check.en.md", got[1].Message)
+	}
+}
+
+func TestValidateUI_Frontmatter_NoFalsePositives(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"quoted value with colon": "---\nlong_description: \"Checks the data: suspense empty\"\n---\n\nBody.\n",
+		"no frontmatter":          "# Card\n\nJust a body: with a colon.\n",
+		"no closing delimiter":    "---\nshort_description: x: y\n",
+		"empty frontmatter":       "---\n---\n\nBody.\n",
+		"changelog":               "---\nshort_description: S\nchangelog:\n  - version: \"1.0.0\"\n    date: \"2026-01-01\"\n    note: \"Initial\"\n---\n",
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeUIFile(t, dir, "card.md", content)
+			wf := &Workflow{Nodes: []Node{{ID: "n", UI: "card.md"}}}
+			if got := codeDiags(ValidateUI(wf, filepath.Join(dir, "workflow.sky")), "SKY-WF-118"); len(got) != 0 {
+				t.Errorf("want no SKY-WF-118, got %+v", got)
+			}
+		})
+	}
+}
+
+// skyway decodes frontmatter into string fields, so a list where it expects a
+// string fails there too and must be reported.
+func TestValidateUI_FrontmatterTypeMismatch_SKY_WF_118(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeUIFile(t, dir, "card.md", "---\nshort_description: [a, b]\n---\n\nBody.\n")
+	wf := &Workflow{Nodes: []Node{{ID: "n", UI: "card.md"}}}
+	if got := codeDiags(ValidateUI(wf, filepath.Join(dir, "workflow.sky")), "SKY-WF-118"); len(got) != 1 {
+		t.Fatalf("want 1 SKY-WF-118 for a list-valued short_description, got %+v", got)
+	}
+}
