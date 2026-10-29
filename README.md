@@ -60,10 +60,19 @@ Semantic rules for outbound HTTP in bash nodes (inline `bash` or resolved
   CLI equivalent, so skyway refuses such a run. `hooks.pre_tool_use.deny` and
   `denied_tools` are fine: they become `--disallowed-tools`.
 
+### `ui` files
+
+- `SKY-WF-103` — `ui` resolves to no markdown files (warning).
+- `SKY-WF-118` — a resolved `ui` file's frontmatter is not valid YAML (error).
+  skyway then ignores the frontmatter, so the dashboard shows no short or long
+  description and prints the raw `---` block as body. The usual cause is an
+  unquoted `: ` inside a value; quote the value. Values must be strings where
+  skyway expects strings (`short_description`, `long_description`).
+
 ### Code allocation
 
 `SKY-WF-*` codes here are allocated in sequence; the next free one is
-`SKY-WF-118`. `SKY-WF-200`–`SKY-WF-299` are reserved for checks `skyway lint`
+`SKY-WF-119`. `SKY-WF-200`–`SKY-WF-299` are reserved for checks `skyway lint`
 runs itself (its concurrency checks are `SKY-WF-201`–`203`), so do not
 allocate in that block. Codes registered in `skyerr` (`skyerr.LintCodes`) are
 taken too; `TestLocalCodesDoNotCollideWithSkyerr` checks this repo's own codes

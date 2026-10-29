@@ -1,11 +1,17 @@
 package workflow
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
+
+const codeUIFrontmatterInvalid = "SKY-WF-118"
 
 // ResolveUILocales returns a map of locale → absolute file path for the ui field
 // of a node. wfDir is the directory containing the .sky file; ui is the raw
@@ -70,6 +76,9 @@ func ResolveUILocales(wfDir, ui string) (map[string]string, error) {
 //   - SKY-WF-103 (warning, non-blocking): ui references a path that resolves to
 //     no markdown files on disk. The warning does not prevent the workflow from
 //     running; the dashboard simply renders no node card or workflow card.
+//   - SKY-WF-118 (error): a resolved ui file has frontmatter that is not valid
+//     YAML. skyway then ignores the frontmatter, so the dashboard shows no short
+//     or long description and prints the raw block as body.
 //
 // wfPath is the path to the .sky file; its directory resolves relative ui paths.
 // Pass "" when the file location is unknown (relative paths then resolve against
@@ -94,6 +103,7 @@ func ValidateUI(wf *Workflow, wfPath string) []Diagnostic {
 				Message:  fmt.Sprintf("workflow ui %q resolves to no markdown files", wf.UI),
 			})
 		}
+		diags = append(diags, validateUIFrontmatter(wfDir, fmt.Sprintf("workflow ui %q", wf.UI), locales)...)
 	}
 
 	// Per-node ui cards.
@@ -115,7 +125,71 @@ func ValidateUI(wf *Workflow, wfPath string) []Diagnostic {
 				Message:  fmt.Sprintf("node %q: ui %q resolves to no markdown files", n.ID, n.UI),
 			})
 		}
+		diags = append(diags, validateUIFrontmatter(wfDir, fmt.Sprintf("node %q: ui %q", n.ID, n.UI), locales)...)
 	}
 
+	return diags
+}
+
+// uiFrontmatter mirrors the struct skyway's ui loader decodes frontmatter into,
+// so a type mismatch (a list for short_description, say) fails here as it
+// fails there.
+type uiFrontmatter struct {
+	Short     string `yaml:"short_description"`
+	Long      string `yaml:"long_description"`
+	Changelog []struct {
+		Version string `yaml:"version"`
+		Date    string `yaml:"date"`
+		Note    string `yaml:"note"`
+	} `yaml:"changelog"`
+}
+
+// uiFrontmatterErr returns the YAML error in a ui markdown file's frontmatter,
+// or nil. It splits the file the way skyway's ui loader does: frontmatter opens
+// with "---\n" at the very start and closes at the next line that is exactly
+// "---". The loader reads a file without frontmatter, or without a closing
+// line, as plain body, so neither is checked.
+func uiFrontmatterErr(raw []byte) error {
+	rest, ok := bytes.CutPrefix(raw, []byte("---\n"))
+	if !ok {
+		return nil
+	}
+	var block []byte
+	for _, line := range bytes.SplitAfter(rest, []byte("\n")) {
+		if string(bytes.TrimRight(line, "\r\n")) == "---" {
+			var fm uiFrontmatter
+			return yaml.Unmarshal(block, &fm)
+		}
+		block = append(block, line...)
+	}
+	return nil
+}
+
+// validateUIFrontmatter reports SKY-WF-118 for each resolved ui file whose
+// frontmatter is not valid YAML. owner names the ui reference in the message.
+// An unreadable file is skipped; that is not this check's concern.
+func validateUIFrontmatter(wfDir, owner string, locales map[string]string) []Diagnostic {
+	paths := make([]string, 0, len(locales))
+	for _, p := range locales {
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	var diags []Diagnostic
+	for _, p := range paths {
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		if err := uiFrontmatterErr(raw); err != nil {
+			rel, relErr := filepath.Rel(wfDir, p)
+			if relErr != nil {
+				rel = p
+			}
+			diags = append(diags, Diagnostic{
+				Code:    codeUIFrontmatterInvalid,
+				Message: fmt.Sprintf("%s: frontmatter in %s is not valid YAML: %v (quote values that contain \": \")", owner, rel, err),
+			})
+		}
+	}
 	return diags
 }
