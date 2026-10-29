@@ -212,7 +212,7 @@ type Node struct {
 
 	// Tool control (#141)
 	AllowedTools []string `json:"allowed_tools,omitempty"` // allowlist; merged with RunOpts base
-	DeniedTools  []string `json:"denied_tools,omitempty"`  // block via pre_tool_use hook
+	DeniedTools  []string `json:"denied_tools,omitempty"`  // removed via --disallowed-tools; "*" removes all
 
 	// Permissions (#191)
 	Permissions string `json:"permissions,omitempty"` // "interactive" enables --permission-prompt-tool

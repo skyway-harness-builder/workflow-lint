@@ -223,6 +223,9 @@ func LintBytes(path string, raw []byte) []Diagnostic { //nolint:funlen // sequen
 	for _, d := range lintThinkingModes(wf) {
 		diags = append(diags, Diagnostic{File: path, Code: d.Code, Message: d.Message, Severity: d.Severity})
 	}
+	for _, d := range lintHooksNeedLoose(wf) {
+		diags = append(diags, Diagnostic{File: path, Code: d.Code, Message: d.Message, Severity: d.Severity})
+	}
 	return diags
 }
 

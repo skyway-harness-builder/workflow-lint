@@ -52,13 +52,24 @@ Semantic rules for outbound HTTP in bash nodes (inline `bash` or resolved
   Fable 5.x, Opus 5.5 and Sonnet 5.5. Use `thinking = {"mode": "adaptive"}`
   and set `effort` (warning; the field is not forwarded to the CLI yet).
 
+### Hooks and isolation
+
+- `SKY-WF-117` — node `hooks` or `hooks.pre_tool_use.inject` in a workflow
+  that does not set `claude.isolation = "loose"` (error). Strict isolation
+  (`--bare`, skyway's daemon default) skips these SDK hooks and they have no
+  CLI equivalent, so skyway refuses such a run. `hooks.pre_tool_use.deny` and
+  `denied_tools` are fine: they become `--disallowed-tools`.
+
 ### Code allocation
 
 `SKY-WF-*` codes here are allocated in sequence; the next free one is
-`SKY-WF-116`. `SKY-WF-200`–`SKY-WF-299` are reserved for checks `skyway lint`
+`SKY-WF-118`. `SKY-WF-200`–`SKY-WF-299` are reserved for checks `skyway lint`
 runs itself (its concurrency checks are `SKY-WF-201`–`203`), so do not
-allocate in that block. Earlier, both sides used `SKY-WF-111`–`113` for
-different checks.
+allocate in that block. Codes registered in `skyerr` (`skyerr.LintCodes`) are
+taken too; `TestLocalCodesDoNotCollideWithSkyerr` checks this repo's own codes
+against it. Earlier, both sides used `SKY-WF-111`–`113` for different checks,
+and `params` declarations shared `SKY-WF-107` with foreach `chain_from`; the
+params check is now `SKY-WF-116`.
 
 ### Declared workflow params
 
