@@ -8,12 +8,13 @@ import (
 	"github.com/skyway-harness-builder/skyerr"
 )
 
-var ultraKeywordRe = regexp.MustCompile(`(?i)\b(ultraplan|ultrareview)\b`)
+var ultraKeywordRe = regexp.MustCompile(`(?i)\b(ultraplan|ultrareview|ultrathink)\b`)
 
 // ValidateUltraKeywords returns a SKY-WF-061 SchemaIssue for each prompt location
-// that contains the bare keyword "ultraplan" or "ultrareview". These keywords fire
-// only in interactive Claude Code; sky always invokes claude non-interactively via
-// -p, so the keywords silently no-op.
+// that contains the bare keyword "ultraplan", "ultrareview" or "ultrathink".
+// skyway runs nodes in stream-json mode, not 'claude -p', so Claude Code's keyword
+// detection stays active: a keyword in a prompt fires ("ultrathink" injects a
+// reason-thoroughly nudge) whether or not the author meant it to.
 func ValidateUltraKeywords(wf *Workflow) []SchemaIssue {
 	if wf == nil {
 		return nil
@@ -55,17 +56,14 @@ func scanUltra(s, nodeID, pointer string) (SchemaIssue, bool) {
 			unique = append(unique, lo)
 		}
 	}
-	var kw string
-	switch len(unique) {
-	case 1:
-		kw = fmt.Sprintf("'%s'", unique[0])
-	default:
-		kw = fmt.Sprintf("'%s' and '%s'", unique[0], unique[1])
+	kw := "'" + unique[0] + "'"
+	if n := len(unique); n > 1 {
+		kw = "'" + strings.Join(unique[:n-1], "', '") + "' and '" + unique[n-1] + "'"
 	}
 	return SchemaIssue{
 		NodeID:  nodeID,
 		Pointer: pointer,
-		Message: fmt.Sprintf("bare keyword %s has no effect under 'sky run' (non-interactive 'claude -p'); replace with explicit instructions", kw),
+		Message: fmt.Sprintf("bare keyword %s is a Claude Code magic keyword, and it stays active under 'skyway run' (stream-json, not 'claude -p'); state the intent explicitly and set reasoning with the node's effort or thinking config", kw),
 		Code:    skyerr.ErrPromptUltraKeywordNoOp,
 	}, true
 }

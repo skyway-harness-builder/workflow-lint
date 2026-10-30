@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/skyway-harness-builder/skyerr"
@@ -58,6 +59,22 @@ func TestValidateUltraKeywords(t *testing.T) {
 				Nodes: []Node{{ID: "n1", Prompt: "ultraplan then ultrareview the result"}},
 			},
 			wantCodes: []skyerr.Code{skyerr.ErrPromptUltraKeywordNoOp},
+		},
+		{
+			name: "WF-061 ultrathink in node.prompt",
+			wf: &Workflow{
+				Name:  "test",
+				Nodes: []Node{{ID: "n1", Prompt: "Ultrathink about the edge cases first"}},
+			},
+			wantCodes: []skyerr.Code{skyerr.ErrPromptUltraKeywordNoOp},
+		},
+		{
+			name: "no match — ultrathinking",
+			wf: &Workflow{
+				Name:  "test",
+				Nodes: []Node{{ID: "n1", Prompt: "no ultrathinking needed"}},
+			},
+			wantNone: true,
 		},
 		{
 			name: "WF-061 ultraplan in system_prompt",
@@ -169,5 +186,26 @@ func TestValidateUltraKeywords(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The message names every keyword found and no longer claims the keywords are
+// inert: under skyway's stream-json invocation they fire.
+func TestScanUltra_Message(t *testing.T) {
+	t.Parallel()
+	iss, ok := scanUltra("ultrathink, then ultraplan, then ULTRAREVIEW and ultrathink again", "n1", "/nodes/n1/prompt")
+	if !ok {
+		t.Fatal("want an issue")
+	}
+	if want := "'ultrathink', 'ultraplan' and 'ultrareview'"; !strings.Contains(iss.Message, want) {
+		t.Errorf("message %q should list %s", iss.Message, want)
+	}
+	for _, stale := range []string{"no effect", "non-interactive"} {
+		if strings.Contains(iss.Message, stale) {
+			t.Errorf("message %q still says %q", iss.Message, stale)
+		}
+	}
+	if !strings.Contains(iss.Message, "stays active under 'skyway run'") {
+		t.Errorf("message %q should say the keyword stays active", iss.Message)
 	}
 }
