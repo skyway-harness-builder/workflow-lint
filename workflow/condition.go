@@ -3,9 +3,9 @@ package workflow
 import (
 	"fmt"
 	"strings"
-)
 
-const codeWhenInvalid = "SKY-WF-119"
+	"github.com/skyway-harness-builder/skyerr"
+)
 
 // EvaluateCondition parses a "when" condition against a strict grammar and
 // returns the evaluation result plus any parse error. skyway's runner calls it
@@ -105,7 +105,7 @@ func whenProblem(when string) string {
 	return "expected $node.output == 'value', $node.output != 'value', or true, false, 1, 0 or empty"
 }
 
-// lintWhenConditions reports SKY-WF-119 (error) for each node whose when
+// lintWhenConditions reports SKY-WF-031 (error) for each node whose when
 // condition can never evaluate. skyway fails such a node at run time with
 // "malformed when-condition", so lint catches it first.
 func lintWhenConditions(wf *Workflow) []Diagnostic {
@@ -117,7 +117,7 @@ func lintWhenConditions(wf *Workflow) []Diagnostic {
 		}
 		if problem := whenProblem(n.When); problem != "" {
 			diags = append(diags, Diagnostic{
-				Code:    codeWhenInvalid,
+				Code:    string(skyerr.ErrConditionParse),
 				Message: fmt.Sprintf("node %q: when %q can never evaluate: %s; skyway fails the node at run time", n.ID, n.When, problem),
 			})
 		}

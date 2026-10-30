@@ -3,6 +3,8 @@ package workflow
 import (
 	"strings"
 	"testing"
+
+	"github.com/skyway-harness-builder/skyerr"
 )
 
 // Same table skyway's runner has carried for evaluateCondition, now that the
@@ -130,22 +132,22 @@ func TestLintBytes_WhenConditions(t *testing.T) {
 		src := strings.Replace(tmpl, "%s", tc.when, 1)
 		var got []Diagnostic
 		for _, d := range LintBytes("whenbug.sky", []byte(src)) {
-			if d.Code == codeWhenInvalid {
+			if d.Code == string(skyerr.ErrConditionParse) {
 				got = append(got, d)
 			}
 		}
 		if tc.wantErr {
 			if len(got) != 1 {
-				t.Fatalf("when %q: want one SKY-WF-119, got %+v", tc.when, got)
+				t.Fatalf("when %q: want one SKY-WF-031, got %+v", tc.when, got)
 			}
 			if got[0].Severity != "" {
-				t.Errorf("SKY-WF-119 severity = %q, want \"\" (blocking)", got[0].Severity)
+				t.Errorf("SKY-WF-031 severity = %q, want \"\" (blocking)", got[0].Severity)
 			}
 			if !strings.Contains(got[0].Message, `node "act"`) {
 				t.Errorf("message %q should name node \"act\"", got[0].Message)
 			}
 		} else if len(got) != 0 {
-			t.Errorf("when %q: want no SKY-WF-119, got %+v", tc.when, got)
+			t.Errorf("when %q: want no SKY-WF-031, got %+v", tc.when, got)
 		}
 	}
 }

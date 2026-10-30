@@ -256,7 +256,7 @@ func whenGrammar() WhenGrammar {
 			"lhs != 'literal'",
 			"boolean literal: true | false | 1 | 0 | (empty string = false)",
 		},
-		Source: "workflow.EvaluateCondition (skyway's runner calls the same function; lint checks it as SKY-WF-119)",
+		Source: "workflow.EvaluateCondition (skyway's runner calls the same function; lint checks it as SKY-WF-031)",
 	}
 }
 

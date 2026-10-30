@@ -71,19 +71,20 @@ Semantic rules for outbound HTTP in bash nodes (inline `bash` or resolved
 
 ### `when` conditions
 
-- `SKY-WF-119` — a node's `when` can never evaluate (error). The grammar is
-  `lhs == 'value'`, `lhs != 'value'` (single or double quotes, no quote of the
-  same kind inside), or `true`, `false`, `1`, `0` or empty. A condition that is a
-  single `$node.output…` reference is accepted, since its output decides at run
-  time. Lint and skyway's runner share one implementation,
-  `workflow.EvaluateCondition`; skyway fails a node whose condition does not
-  parse, with `malformed when-condition`. The usual mistake is an unquoted
-  right-hand side: `$check.output == done` instead of `$check.output == 'done'`.
+- `SKY-WF-031` (`skyerr.ErrConditionParse`) — a node's `when` can never
+  evaluate (error). The grammar is `lhs == 'value'`, `lhs != 'value'` (single
+  or double quotes, no quote of the same kind inside), or `true`, `false`, `1`,
+  `0` or empty. A condition that is a single `$node.output…` reference is
+  accepted, since its output decides at run time. Lint and skyway's runner share
+  one implementation, `workflow.EvaluateCondition`; skyway fails a node whose
+  condition does not parse, with `malformed when-condition`. The usual mistake
+  is an unquoted right-hand side: `$check.output == done` instead of
+  `$check.output == 'done'`.
 
 ### Code allocation
 
 `SKY-WF-*` codes here are allocated in sequence; the next free one is
-`SKY-WF-120`. `SKY-WF-200`–`SKY-WF-299` are reserved for checks `skyway lint`
+`SKY-WF-119`. `SKY-WF-200`–`SKY-WF-299` are reserved for checks `skyway lint`
 runs itself (its concurrency checks are `SKY-WF-201`–`203`), so do not
 allocate in that block. Codes registered in `skyerr` (`skyerr.LintCodes`) are
 taken too; `TestLocalCodesDoNotCollideWithSkyerr` checks this repo's own codes
