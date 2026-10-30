@@ -69,6 +69,23 @@ Semantic rules for outbound HTTP in bash nodes (inline `bash` or resolved
   unquoted `: ` inside a value; quote the value. Values must be strings where
   skyway expects strings (`short_description`, `long_description`).
 
+### `when` conditions
+
+- `SKY-WF-031` (`skyerr.ErrConditionParse`) — a node's `when` can never
+  evaluate (error). The grammar is `lhs == 'value'`, `lhs != 'value'` (single
+  or double quotes, no quote of the same kind inside), or `true`, `false`, `1`,
+  `0` or empty. A condition that is a single `$node.output…` reference or a
+  single `{{var}}` placeholder is accepted, since its value decides at run time.
+  Lint and skyway's runner share one implementation,
+  `workflow.EvaluateCondition`; skyway fails a node whose condition does not
+  parse, with `malformed when-condition`. The usual mistake is an unquoted
+  right-hand side: `$check.output == done` instead of
+  `$check.output == 'done'`.
+- `SKY-WF-030` (`skyerr.ErrOutputRefInvalid`) — a `when` references
+  `$id.output` for a node the workflow does not define (error). skyway leaves
+  an unresolved reference as literal text, so the condition compares the text
+  `$id.output` instead of the node's output. Usually a typo in the node id.
+
 ### Code allocation
 
 `SKY-WF-*` codes here are allocated in sequence; the next free one is
