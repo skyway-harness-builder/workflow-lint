@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/skyway-harness-builder/skyerr"
@@ -78,21 +79,22 @@ func extractTrailingQuoted(s string) (inner string, start int, ok bool) {
 	return innerText, openIdx, true
 }
 
-// whenProbe stands in for every $node.output reference when lint checks a
-// condition's shape. It has no quotes, operators or spaces, so it cannot change
-// how the expression parses; only the run-time output can.
+// whenProbe stands in for every $node.output reference and {{var}} placeholder
+// when lint checks a condition's shape. It has no quotes, operators or spaces,
+// so it cannot change how the expression parses; only the run-time values can.
 const whenProbe = "x"
 
 // whenProblem returns why a node's when condition can never evaluate, or "" if
 // it can. It runs the runtime grammar (EvaluateCondition) on the condition with
-// every output reference replaced by whenProbe. A condition that is a single
-// output reference is accepted: its output decides at run time.
+// every output reference and {{var}} placeholder replaced by whenProbe. A
+// condition that is a single reference or placeholder is accepted: its value
+// decides at run time.
 func whenProblem(when string) string {
 	trimmed := strings.TrimSpace(when)
-	if loc := OutputRefRe.FindStringIndex(trimmed); loc != nil && loc[0] == 0 && loc[1] == len(trimmed) {
+	if spansAll(OutputRefRe, trimmed) || spansAll(placeholderRe, trimmed) {
 		return ""
 	}
-	probe := OutputRefRe.ReplaceAllLiteralString(trimmed, whenProbe)
+	probe := placeholderRe.ReplaceAllLiteralString(OutputRefRe.ReplaceAllLiteralString(trimmed, whenProbe), whenProbe)
 	if _, err := EvaluateCondition(probe); err == nil {
 		return ""
 	}
@@ -105,10 +107,22 @@ func whenProblem(when string) string {
 	return "expected $node.output == 'value', $node.output != 'value', or true, false, 1, 0 or empty"
 }
 
-// lintWhenConditions reports SKY-WF-031 (error) for each node whose when
-// condition can never evaluate. skyway fails such a node at run time with
-// "malformed when-condition", so lint catches it first.
+// spansAll reports whether re matches the whole of s.
+func spansAll(re *regexp.Regexp, s string) bool {
+	loc := re.FindStringIndex(s)
+	return loc != nil && loc[0] == 0 && loc[1] == len(s)
+}
+
+// lintWhenConditions checks each node's when condition. It reports SKY-WF-031
+// (error) when the condition can never evaluate, which skyway fails at run time
+// with "malformed when-condition", and SKY-WF-030 (error) for each $node.output
+// reference to a node the workflow does not define. skyway leaves such a
+// reference as literal text, so it never resolves to the node's output.
 func lintWhenConditions(wf *Workflow) []Diagnostic {
+	ids := make(map[string]bool, len(wf.Nodes))
+	for i := range wf.Nodes {
+		ids[wf.Nodes[i].ID] = true
+	}
 	var diags []Diagnostic
 	for i := range wf.Nodes {
 		n := &wf.Nodes[i]
@@ -119,6 +133,17 @@ func lintWhenConditions(wf *Workflow) []Diagnostic {
 			diags = append(diags, Diagnostic{
 				Code:    string(skyerr.ErrConditionParse),
 				Message: fmt.Sprintf("node %q: when %q can never evaluate: %s; skyway fails the node at run time", n.ID, n.When, problem),
+			})
+		}
+		reported := map[string]bool{}
+		for _, m := range OutputRefRe.FindAllStringSubmatch(n.When, -1) {
+			if ids[m[1]] || reported[m[1]] {
+				continue
+			}
+			reported[m[1]] = true
+			diags = append(diags, Diagnostic{
+				Code:    string(skyerr.ErrOutputRefInvalid),
+				Message: fmt.Sprintf("node %q: when %q references %s, but the workflow has no node %q", n.ID, n.When, m[0], m[1]),
 			})
 		}
 	}

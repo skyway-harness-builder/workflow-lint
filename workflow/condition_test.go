@@ -69,6 +69,9 @@ func TestWhenProblem(t *testing.T) {
 		"$gate.output",          // a lone reference: its output decides at run time
 		"$gate.output.delivers", // same, with a field path
 		"$a.output == $b.output == 'x'",
+		"{{flag}}",                     // a lone placeholder: the variable decides at run time
+		"{{label}} != 'ready-for-sky'", // sky-format.md's cancel-node example
+		"$check.output == '{{expected}}'",
 	}
 	for _, w := range valid {
 		if p := whenProblem(w); p != "" {
@@ -76,15 +79,16 @@ func TestWhenProblem(t *testing.T) {
 		}
 	}
 	invalid := map[string]string{
-		"$check.output == found":      "right-hand side must be a quoted value",
-		"$check.output != missing":    "right-hand side must be a quoted value",
-		"$a.output == $b.output":      "right-hand side must be a quoted value",
-		"$check.output 'found'":       "quoted value must follow == or !=",
-		"$check.output == 'found":     "right-hand side must be a quoted value",
-		`$check.output == "found'`:    "right-hand side must be a quoted value",
-		"$check.output == 'it's'":     "right-hand side must be a quoted value",
-		"yes":                         "expected $node.output == 'value'",
-		"$check.output and $b.output": "expected $node.output == 'value'",
+		"$check.output == found":        "right-hand side must be a quoted value",
+		"$check.output != missing":      "right-hand side must be a quoted value",
+		"$a.output == $b.output":        "right-hand side must be a quoted value",
+		"$check.output == {{expected}}": "right-hand side must be a quoted value",
+		"$check.output 'found'":         "quoted value must follow == or !=",
+		"$check.output == 'found":       "right-hand side must be a quoted value",
+		`$check.output == "found'`:      "right-hand side must be a quoted value",
+		"$check.output == 'it's'":       "right-hand side must be a quoted value",
+		"yes":                           "expected $node.output == 'value'",
+		"$check.output and $b.output":   "expected $node.output == 'value'",
 	}
 	for w, want := range invalid {
 		p := whenProblem(w)
@@ -106,9 +110,11 @@ func TestWhenProblem_MatchesRuntime(t *testing.T) {
 	for _, w := range []string{
 		"$check.output == 'found'", "$check.output == found", "$check.output 'found'",
 		"true", "yes", "$a.output == $b.output", "$a.output.f != 'x'",
+		"{{label}} != 'ready'", "$check.output == {{expected}}",
 	} {
 		lintOK := whenProblem(w) == ""
-		_, err := EvaluateCondition(OutputRefRe.ReplaceAllLiteralString(w, "resolved-value"))
+		resolved := placeholderRe.ReplaceAllLiteralString(OutputRefRe.ReplaceAllLiteralString(w, "resolved-value"), "resolved-value")
+		_, err := EvaluateCondition(resolved)
 		if lintOK != (err == nil) {
 			t.Errorf("%q: lint says ok=%v but the runtime grammar says err=%v", w, lintOK, err)
 		}
@@ -120,34 +126,40 @@ func TestLintBytes_WhenConditions(t *testing.T) {
 	const tmpl = "⊕meta⊕\nname = \"whenbug\"\ndescription = \"repro\"\ntrigger.manual = true\n⊕⊕\n\n" +
 		"§check§\nbash = \"echo found\"\n§§\n\n" +
 		"§act§\nbash = \"echo acting\"\ndepends_on = [\"check\"]\nwhen = \"%s\"\n§§\n"
+	parse, ref := string(skyerr.ErrConditionParse), string(skyerr.ErrOutputRefInvalid)
 	cases := []struct {
-		when    string
-		wantErr bool
+		when string
+		want string // the one expected code, or "" for none
 	}{
-		{"$check.output == found", true},
-		{"$check.output == 'found'", false},
-		{"true", false},
+		{"$check.output == found", parse},
+		{"$ghost.output == 'found'", ref},
+		{"$ghost.output == $ghost.output == 'x'", ref}, // one per unknown node
+		{"$check.output == 'found'", ""},
+		{"{{label}} != 'ready'", ""},
+		{"true", ""},
 	}
 	for _, tc := range cases {
 		src := strings.Replace(tmpl, "%s", tc.when, 1)
 		var got []Diagnostic
 		for _, d := range LintBytes("whenbug.sky", []byte(src)) {
-			if d.Code == string(skyerr.ErrConditionParse) {
+			if d.Code == parse || d.Code == ref {
 				got = append(got, d)
 			}
 		}
-		if tc.wantErr {
-			if len(got) != 1 {
-				t.Fatalf("when %q: want one SKY-WF-031, got %+v", tc.when, got)
+		if tc.want == "" {
+			if len(got) != 0 {
+				t.Errorf("when %q: want no when diagnostics, got %+v", tc.when, got)
 			}
-			if got[0].Severity != "" {
-				t.Errorf("SKY-WF-031 severity = %q, want \"\" (blocking)", got[0].Severity)
-			}
-			if !strings.Contains(got[0].Message, `node "act"`) {
-				t.Errorf("message %q should name node \"act\"", got[0].Message)
-			}
-		} else if len(got) != 0 {
-			t.Errorf("when %q: want no SKY-WF-031, got %+v", tc.when, got)
+			continue
+		}
+		if len(got) != 1 || got[0].Code != tc.want {
+			t.Fatalf("when %q: want one %s, got %+v", tc.when, tc.want, got)
+		}
+		if got[0].Severity != "" {
+			t.Errorf("%s severity = %q, want \"\" (blocking)", tc.want, got[0].Severity)
+		}
+		if !strings.Contains(got[0].Message, `node "act"`) {
+			t.Errorf("message %q should name node \"act\"", got[0].Message)
 		}
 	}
 }
