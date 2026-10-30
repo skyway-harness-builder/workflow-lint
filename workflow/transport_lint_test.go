@@ -3,6 +3,7 @@ package workflow
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -252,5 +253,47 @@ func TestIsNonBlockingSeverity(t *testing.T) {
 	}
 	if isNonBlockingSeverity("") || isNonBlockingSeverity("error") {
 		t.Fatal("empty/error severities must be blocking")
+	}
+}
+
+// Each script is one node's bash; want lists (fail, max-time) per curl command
+// found, in order. The first three lines come from essential-workflows'
+// check-sky-environment and private-workflows' publish-framework-depindexes,
+// which used to warn.
+func TestCurlInvocations(t *testing.T) {
+	t.Parallel()
+	type call struct{ fail, maxTime bool }
+	cases := []struct {
+		script string
+		want   []call
+	}{
+		{`if curl -fsS -m 5 "$BASE/health" >/dev/null 2>&1; then`, []call{{true, true}}},
+		{`if ! curl -fsSL "$PUBLIC_INDEX_URL" -o "$CURRENT_INDEX"; then`, []call{{true, false}}},
+		{`command -v curl >/dev/null 2>&1 || { echo 'FRAMEWORK_MERGE_FAILED: curl not found' >&2; exit 1; }`, nil},
+		{`which curl`, nil},
+		{`echo "curl -sS x"`, nil},
+		{`curl -sSf --max-time 5 https://x`, []call{{true, true}}},
+		{`curl -sS --max-time=5 https://x`, []call{{false, true}}},
+		{`curl -sm 5 https://x`, []call{{false, true}}},
+		{`curl -m5 https://x`, []call{{false, true}}},
+		{`curl --fail-with-body https://x`, []call{{true, false}}},
+		{`curl -F x=y https://x`, []call{{false, false}}},
+		{`curl -sSo -f https://x`, []call{{false, false}}},
+		{`curl -sS "https://x?a=1&b=2" -d '-f'`, []call{{false, false}}},
+		{`resp=$(curl -fsS --max-time 10 "$U") && curl -sS "$V" | jq .`, []call{{true, true}, {false, false}}},
+		{`out="$(curl -fsS -m 3 x)"`, []call{{true, true}}},
+		{`TOKEN=abc curl -fsS -m 3 x`, []call{{true, true}}},
+		{`timeout 10 curl -fsS -m 3 x`, []call{{true, true}}},
+		{`/usr/bin/curl -fsS -m 3 x`, []call{{true, true}}},
+	}
+	for _, tc := range cases {
+		var got []call
+		for _, c := range curlInvocations(tc.script) {
+			fail, maxTime := curlFlags(c.args)
+			got = append(got, call{fail, maxTime})
+		}
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s\n  got  %+v\n  want %+v", tc.script, got, tc.want)
+		}
 	}
 }

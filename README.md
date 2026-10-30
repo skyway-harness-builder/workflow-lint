@@ -37,7 +37,11 @@ Semantic rules for outbound HTTP in bash nodes (inline `bash` or resolved
 `bash_file` script body):
 
 - `SKY-WF-111` — `curl` without `--fail` or `-f` (warning).
-- `SKY-WF-112` — `curl` without `--max-time` (warning).
+- `SKY-WF-112` — `curl` without `--max-time` or `-m` (warning).
+
+Both read curl's own option syntax: bundled short flags count (`-fsS`, `-sSf`,
+`-m5`, `-sm 5`), and only a curl the shell runs as a command is checked, so
+`command -v curl` or a curl inside an `echo` string is not.
 - `SKY-WF-113` — `retry` on a sink-like node id/script (`send`, `post`,
   `create`, `notify`, `book`, `deliver`, `apply`) — retries belong on
   idempotent reads (warning).
