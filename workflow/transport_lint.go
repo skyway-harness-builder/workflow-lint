@@ -18,9 +18,18 @@ const (
 var (
 	sinkHeuristicPattern = regexp.MustCompile(`(?i)(send|post|create|notify|book|deliver|apply)`)
 	curlWordPattern      = regexp.MustCompile(`\bcurl\b`)
-	curlFailPattern      = regexp.MustCompile(`(?:^|[^-a-zA-Z])(--fail\b|-f\b)`)
-	curlMaxTimePattern   = regexp.MustCompile(`--max-time\b`)
+	// curlCommandPattern matches curl where the shell runs it as a command: at
+	// the start of a statement, after a separator (; & | ( { ` or $( ), after a
+	// keyword such as if or !, or after a wrapper such as sudo or timeout N, with
+	// optional VAR=value assignments in between. `command -v curl` and a curl
+	// inside an echo string do not match.
+	curlCommandPattern = regexp.MustCompile("(?:^|[;&|({`]|\\$\\(|(?:^|\\s)(?:if|then|elif|else|while|until|do|time|exec|!|sudo|nohup|xargs|command|env|timeout\\s+\\S+)\\s)\\s*(?:[A-Za-z_][A-Za-z0-9_]*=\\S*\\s+)*(?:\\S*/)?curl(?:\\s|$)")
 )
+
+// curlShortOptsWithArg are curl's single-letter options that take a value: in a
+// bundle such as -sSo the rest of the bundle, or else the next word, is that
+// value rather than more flags.
+const curlShortOptsWithArg = "AbcCdDeEFHKmoPQrtTuUwxXyYz"
 
 // ValidateTransportLint applies semantic bash-transport rules from issue #24:
 //
@@ -77,23 +86,64 @@ func looksLikeSinkNode(n *Node) bool {
 
 func lintCurlTransport(nodeID, script string) []Diagnostic {
 	var diags []Diagnostic
-	for _, line := range curlInvocationLines(script) {
-		if !curlFailPattern.MatchString(line) {
+	for _, call := range curlInvocations(script) {
+		fail, maxTime := curlFlags(call.args)
+		if !fail {
 			diags = append(diags, Diagnostic{
 				Code:     codeCurlMissingFail,
 				Severity: "warning",
-				Message:  fmt.Sprintf("node %q: curl without --fail (or -f): %s", nodeID, truncateCurlLine(line)),
+				Message:  fmt.Sprintf("node %q: curl without --fail (or -f): %s", nodeID, truncateCurlLine(call.stmt)),
 			})
 		}
-		if !curlMaxTimePattern.MatchString(line) {
+		if !maxTime {
 			diags = append(diags, Diagnostic{
 				Code:     codeCurlMissingMaxTime,
 				Severity: "warning",
-				Message:  fmt.Sprintf("node %q: curl without --max-time: %s", nodeID, truncateCurlLine(line)),
+				Message:  fmt.Sprintf("node %q: curl without --max-time: %s", nodeID, truncateCurlLine(call.stmt)),
 			})
 		}
 	}
 	return diags
+}
+
+// curlFlags reports whether curl's arguments turn on --fail and --max-time. It
+// reads short options the way curl does, so -fsS, -sSf, -m 5, -m5 and -sm 5 all
+// count, while -F (form data) and the value after -o or -H do not.
+func curlFlags(args []string) (fail, maxTime bool) {
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case a == "--":
+			return fail, maxTime
+		case strings.HasPrefix(a, "--"):
+			name, _, hasValue := strings.Cut(a[2:], "=")
+			switch name {
+			case "fail", "fail-with-body":
+				fail = true
+			case "max-time":
+				maxTime = true
+				if !hasValue {
+					i++
+				}
+			}
+		case len(a) > 1 && a[0] == '-':
+			for j := 1; j < len(a); j++ {
+				switch a[j] {
+				case 'f':
+					fail = true
+				case 'm':
+					maxTime = true
+				}
+				if strings.IndexByte(curlShortOptsWithArg, a[j]) >= 0 {
+					if j == len(a)-1 {
+						i++
+					}
+					break
+				}
+			}
+		}
+	}
+	return fail, maxTime
 }
 
 func lintPreferHTTPNode(n *Node, script string) []Diagnostic {
@@ -131,16 +181,69 @@ func resolveBashScript(n *Node, wfDir string) (string, bool) {
 	return string(content), true
 }
 
-// curlInvocationLines returns logical lines that invoke curl. Comment-only and
-// echo/heredoc lines are skipped; backslash continuations are joined first.
-func curlInvocationLines(script string) []string {
-	var hits []string
+// curlCall is one curl command: the statement it is in, for messages, and the
+// words after `curl` up to the end of that command.
+type curlCall struct {
+	stmt string
+	args []string
+}
+
+// curlInvocations returns every curl command the script runs. Comment-only and
+// echo/printf lines are skipped and backslash continuations joined first.
+func curlInvocations(script string) []curlCall {
+	var calls []curlCall
 	for _, stmt := range bashStatements(script) {
-		if curlWordPattern.MatchString(stmt) {
-			hits = append(hits, stmt)
+		calls = append(calls, curlCalls(stmt)...)
+	}
+	return calls
+}
+
+// curlCalls returns the curl commands in one statement.
+func curlCalls(stmt string) []curlCall {
+	var calls []curlCall
+	for _, loc := range curlCommandPattern.FindAllStringIndex(stmt, -1) {
+		calls = append(calls, curlCall{stmt: stmt, args: commandWords(stmt[loc[1]:])})
+	}
+	return calls
+}
+
+// commandWords splits s into shell words up to the end of its first command: an
+// unquoted ; | & ) or backtick. Quotes group a word and are dropped. An & right
+// after < or > belongs to a redirection such as 2>&1.
+func commandWords(s string) []string {
+	var words []string
+	var cur strings.Builder
+	var quote byte
+	flush := func() {
+		if cur.Len() > 0 {
+			words = append(words, cur.String())
+			cur.Reset()
 		}
 	}
-	return hits
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			} else {
+				cur.WriteByte(c)
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == ' ' || c == '\t':
+			flush()
+		case c == '&' && i > 0 && (s[i-1] == '>' || s[i-1] == '<'):
+			cur.WriteByte(c)
+		case c == ';' || c == '|' || c == '&' || c == ')' || c == '`':
+			flush()
+			return words
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	flush()
+	return words
 }
 
 func bashStatements(script string) []string {
@@ -203,8 +306,8 @@ func isEssentiallySingleCurl(script string) bool {
 		switch {
 		case isBenignPreamble(stmt):
 			continue
-		case curlWordPattern.MatchString(stmt):
-			curlCount++
+		case len(curlCalls(stmt)) > 0:
+			curlCount += len(curlCalls(stmt))
 		default:
 			otherExec++
 		}
